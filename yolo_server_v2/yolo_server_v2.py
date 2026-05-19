@@ -16,7 +16,24 @@ latest_data = {
 history = []
 
 latest_frame = None
+ #reset
+@app.route('/reset', methods=['POST'])
+def reset():
+    global latest_data, history, latest_frame
 
+    latest_data = {
+        "count": 0,
+        "total": 0,
+        "lat": 0,
+        "lng": 0
+    }
+
+    history.clear()
+    latest_frame = None
+
+    print(" MANUAL RESET DONE")
+
+    return {"status": "ok"}
 
 # ------------------
 # PUSH endpoint (Jetson -> Server)
