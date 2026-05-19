@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Drone System</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+</head>
+
+<body>
+
+<h2>Live</h2>
+<img src="/video" width="640">
+
+<h2>Data</h2>
+<p>Count: <span id="count">0</span></p>
+<p>Total: <span id="total">0</span></p>
+
+<h2>Map</h2>
+<div id="map" style="height:400px;"></div>
+
+<h2>AI Analysis</h2>
+<pre id="analysis"></pre>
+
+<script>
+var map = L.map('map').setView([24.1858,120.6532], 16);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+var heat = L.heatLayer([], {radius:25}).addTo(map);
+
+setInterval(()=>{
+    fetch('/data').then(r=>r.json()).then(d=>{
+        document.getElementById("count").innerText = d.count;
+        document.getElementById("total").innerText = d.total;
+    });
+
+    fetch('/heatmap').then(r=>r.json()).then(d=>{
+        heat.setLatLngs(d.map(p=>[p.lat,p.lng,p.weight]));
+    });
+
+    fetch('/analysis').then(r=>r.text()).then(d=>{
+        document.getElementById("analysis").innerText = d;
+    });
+
+},1000);
+</script>
+
+</body>
+</html>
