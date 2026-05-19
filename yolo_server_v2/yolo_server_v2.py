@@ -1,90 +1,96 @@
 from flask import Flask, request, jsonify, render_template, Response
 import time
-import requests
 
 app = Flask(__name__)
 
 # ------------------
-# data
+# DATA STORE
 # ------------------
-latest_data = {"count":0,"total":0,"lat":0,"lng":0}
+latest_data = {
+    "count": 0,
+    "total": 0,
+    "lat": 0,
+    "lng": 0
+}
+
 history = []
 
-# ------------------
-# Jetson auto
-# ------------------
-jetsons = {}
-TIMEOUT = 5
+latest_frame = None
 
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.json
-    ip = data["ip"]
-
-    jetsons[ip] = {"last": time.time()}
-    return {"status":"ok"}
-
-def get_jetson():
-    now = time.time()
-
-    # clear if offline
-    for ip in list(jetsons.keys()):
-        if now - jetsons[ip]["last"] > TIMEOUT:
-            del jetsons[ip]
-
-    if not jetsons:
-        return None
-
-    return list(jetsons.keys())[-1]
 
 # ------------------
-# update data
+# PUSH endpoint (Jetson -> Server)
 # ------------------
-@app.route('/update', methods=['POST'])
-def update():
-    global latest_data, history
+@app.route('/upload', methods=['POST'])
+def upload():
+    global latest_data, history, latest_frame
 
-    latest_data = request.json
+    # frame
+    file = request.files.get("frame")
+    if file:
+        latest_frame = file.read()
 
-    if latest_data["count"] > 0:
+    # data
+    data = request.form.to_dict()
+
+    # convert to float safely
+    try:
+        data = {k: float(v) for k, v in data.items()}
+    except:
+        return {"status": "bad data"}
+
+    latest_data = data
+
+    # heatmap update
+    if data.get("count", 0) > 0:
         history.append({
-            "lat": latest_data["lat"],
-            "lng": latest_data["lng"],
-            "weight": latest_data["count"]
+            "lat": data["lat"],
+            "lng": data["lng"],
+            "weight": data["count"]
         })
 
-    return {"status":"ok"}
+    return {"status": "ok"}
+
 
 # ------------------
-# API
+# latest data API
 # ------------------
 @app.route('/data')
 def data():
     return jsonify(latest_data)
 
+
+# ------------------
+# heatmap API
+# ------------------
 @app.route('/heatmap')
 def heatmap():
     return jsonify(history)
 
+
 # ------------------
-# proxy video
+# LIVE VIDEO (from memory frame)
 # ------------------
+def gen():
+    global latest_frame
+
+    while True:
+        if latest_frame:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + latest_frame + b'\r\n')
+        time.sleep(0.03)
+
+
 @app.route('/video')
 def video():
-    ip = get_jetson()
-
-    if ip is None:
-        return "No Jetson", 503
-
-    url = f"http://{ip}:5000/video"
-
     return Response(
-        requests.get(url, stream=True).raw,
-        content_type='multipart/x-mixed-replace; boundary=frame'
+        gen(),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
+
 # ------------------
-# LLM-like
+# simple AI analysis
 # ------------------
 @app.route('/analysis')
 def analysis():
@@ -95,10 +101,10 @@ def analysis():
         action = "maintain"
     elif total < 15:
         risk = "Medium"
-        action = "more frequently"
+        action = "increase monitoring"
     else:
         risk = "High"
-        action = "action now"
+        action = "action required"
 
     return f"""
 [Risk] {risk}
@@ -106,15 +112,17 @@ def analysis():
 [Action] {action}
 """
 
+
 # ------------------
-# index
+# UI
 # ------------------
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 # ------------------
-# main
+# MAIN
 # ------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, threaded=True)
