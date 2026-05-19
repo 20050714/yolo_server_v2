@@ -1,17 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Drone System</title>
+    <title>Drone System (Push Mode)</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <style>
+        body { font-family: Arial; }
+        #video {
+            width: 640px;
+            height: auto;
+            border: 2px solid #333;
+        }
+    </style>
 </head>
 
 <body>
 
-<h2>Live</h2>
-<img src="/video" width="640">
+<h2>Live Video</h2>
+<img id="video" src="/video" />
 
 <h2>Data</h2>
 <p>Count: <span id="count">0</span></p>
@@ -26,25 +35,67 @@
 <script>
 var map = L.map('map').setView([24.1858,120.6532], 16);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+}).addTo(map);
 
-var heat = L.heatLayer([], {radius:25}).addTo(map);
+var heat = L.heatLayer([], {radius: 25}).addTo(map);
 
-setInterval(()=>{
-    fetch('/data').then(r=>r.json()).then(d=>{
-        document.getElementById("count").innerText = d.count;
-        document.getElementById("total").innerText = d.total;
-    });
+let heatCache = [];
 
-    fetch('/heatmap').then(r=>r.json()).then(d=>{
-        heat.setLatLngs(d.map(p=>[p.lat,p.lng,p.weight]));
-    });
+// ------------------
+// SAFE fetch helper
+// ------------------
+async function safeFetch(url, parser='json') {
+    try {
+        let res = await fetch(url);
+        if (!res.ok) return null;
+        return parser === 'json' ? res.json() : res.text();
+    } catch (e) {
+        return null;
+    }
+}
 
-    fetch('/analysis').then(r=>r.text()).then(d=>{
-        document.getElementById("analysis").innerText = d;
-    });
+// ------------------
+// UI update loop
+// ------------------
+setInterval(async () => {
 
-},1000);
+    // -------- data --------
+    let d = await safeFetch('/data');
+    if (d) {
+        document.getElementById("count").innerText = d.count ?? 0;
+        document.getElementById("total").innerText = d.total ?? 0;
+    }
+
+    // -------- heatmap --------
+    let h = await safeFetch('/heatmap');
+    if (h) {
+        heatCache = h.map(p => [p.lat, p.lng, p.weight]);
+        heat.setLatLngs(heatCache);
+    }
+
+    // -------- AI analysis --------
+    let a = await safeFetch('/analysis', 'text');
+    if (a) {
+        document.getElementById("analysis").innerText = a;
+    }
+
+}, 1000);
+
+
+// ------------------
+// video watchdog
+// ------------------
+const video = document.getElementById("video");
+
+video.onerror = () => {
+    console.log("Video stream lost, retrying...");
+    setTimeout(() => {
+        video.src = "/video?t=" + new Date().getTime();
+    }, 2000);
+};
+
 </script>
 
 </body>
