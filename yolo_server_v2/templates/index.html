@@ -9,10 +9,17 @@
 
     <style>
         body { font-family: Arial; }
+
         #video {
             width: 640px;
-            height: auto;
             border: 2px solid #333;
+        }
+
+        button {
+            margin: 10px 0;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -21,6 +28,9 @@
 
 <h2>Live Video</h2>
 <img id="video" src="/video" />
+
+<!-- ✅ RESET BUTTON（正確位置） -->
+<button onclick="resetDemo()">RESET DEMO</button>
 
 <h2>Data</h2>
 <p>Count: <span id="count">0</span></p>
@@ -41,10 +51,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 var heat = L.heatLayer([], {radius: 25}).addTo(map);
 
-let heatCache = [];
-
 // ------------------
-// SAFE fetch helper
+// SAFE fetch
 // ------------------
 async function safeFetch(url, parser='json') {
     try {
@@ -57,25 +65,38 @@ async function safeFetch(url, parser='json') {
 }
 
 // ------------------
-// UI update loop
+// RESET FUNCTION
+// ------------------
+function resetDemo(){
+    fetch('/reset', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            console.log("RESET OK", d);
+
+            // optional: clear UI instantly
+            heat.setLatLngs([]);
+            document.getElementById("count").innerText = 0;
+            document.getElementById("total").innerText = 0;
+            document.getElementById("analysis").innerText = "";
+        });
+}
+
+// ------------------
+// UPDATE LOOP
 // ------------------
 setInterval(async () => {
 
-    // -------- data --------
     let d = await safeFetch('/data');
     if (d) {
         document.getElementById("count").innerText = d.count ?? 0;
         document.getElementById("total").innerText = d.total ?? 0;
     }
 
-    // -------- heatmap --------
     let h = await safeFetch('/heatmap');
     if (h) {
-        heatCache = h.map(p => [p.lat, p.lng, p.weight]);
-        heat.setLatLngs(heatCache);
+        heat.setLatLngs(h.map(p => [p.lat, p.lng, p.weight]));
     }
 
-    // -------- AI analysis --------
     let a = await safeFetch('/analysis', 'text');
     if (a) {
         document.getElementById("analysis").innerText = a;
@@ -83,9 +104,8 @@ setInterval(async () => {
 
 }, 1000);
 
-
 // ------------------
-// video watchdog
+// video retry
 // ------------------
 const video = document.getElementById("video");
 
